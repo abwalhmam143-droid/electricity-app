@@ -2,8 +2,8 @@ import sqlite3
 import urllib.parse
 import streamlit as st
 
-# 1. تهيئة قاعدة البيانات وإنشاء الجداول المحدثة
-conn = sqlite3.connect("electricity_mobile.db", check_same_thread=False)
+# 1. تهيئة قاعدة البيانات باسم جديد لتفادي التعارض مع الهيكل القديم
+conn = sqlite3.connect("electricity_v2.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute(
@@ -57,7 +57,7 @@ if "user_id" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = None
 
-# إذا لم يكن المستخدم مسجلاً للدخول
+# الشاشة الأولى: تسجيل الدخول / إنشاء حساب
 if st.session_state.user_id is None:
     st.title("⚡ برنامج فواتير الكهرباء")
     auth_mode = st.radio(
@@ -106,9 +106,8 @@ if st.session_state.user_id is None:
             else:
                 st.warning("يرجى تعبئة جميع الحقول")
 
-# بعد تسجيل الدخول بنجاح
+# الشاشة الرئيسية بعد الدخول
 else:
-    # شريط هيدر الترحيب وتسجيل الخروج
     col_user, col_logout = st.columns([3, 1])
     with col_user:
         st.write(f"👤 مرحباً: **{st.session_state.username}**")
@@ -124,7 +123,7 @@ else:
         ["إصدار فاتورة", "إضافة مشترك", "سجل الفواتير"]
     )
 
-    # --- تبويب إضافة مشترك ---
+    # تبويب إضافة مشترك
     with tab2:
         st.header("إضافة مشترك جديد")
         sub_name = st.text_input("اسم المشترك:")
@@ -161,11 +160,10 @@ else:
             else:
                 st.warning("يرجى إدخال اسم المشترك ورقم الجوال")
 
-    # --- تبويب إصدار فاتورة ---
+    # تبويب إصدار فاتورة
     with tab1:
         st.header("إصدار فاتورة جديدة")
 
-        # جلب مشتركي المستخدم الحالي فقط
         cursor.execute(
             "SELECT id, name, category, ct_ratio, phone FROM subscribers WHERE user_id = ?",
             (st.session_state.user_id,),
@@ -200,7 +198,6 @@ else:
                     actual_consumption = raw_consumption * ct_ratio
                     cat = selected_sub[2]
 
-                    # حساب الاستهلاك بناءً على الفئة
                     if cat == "residential":
                         if actual_consumption <= 6000:
                             base_cost = actual_consumption * 0.18
@@ -216,12 +213,11 @@ else:
                                 (actual_consumption - 6000) * 0.30
                             )
 
-                    meter_fee = 15.0  # رسوم العداد الثابتة
+                    meter_fee = 15.0
                     subtotal = base_cost + meter_fee
                     vat = subtotal * 0.15
                     total = subtotal + vat
 
-                    # حفظ الفاتورة
                     cursor.execute(
                         """
                     INSERT INTO bills (sub_id, prev_reading, curr_reading, consumption, base_amount, meter_fee, vat_amount, total_amount)
@@ -244,7 +240,6 @@ else:
                     st.write(f"- الاستهلاك: {actual_consumption:.2f} ك.و.س")
                     st.write(f"- ضريبة القيمة المضافة: {vat:.2f} ريال")
 
-                    # تجهيز نص الواتساب
                     msg = (
                         f"فاتورة كهرباء للمشترك: {selected_sub[1]}\n"
                         f"الاستهلاك: {actual_consumption:.2f} ك.و.س\n"
@@ -259,7 +254,7 @@ else:
                         f"[📱 إرسال الفاتورة عبر WhatsApp]({whatsapp_url})"
                     )
 
-    # --- تبويب سجل الفواتير ---
+    # تبويب سجل الفواتير
     with tab3:
         st.header("سجل الفواتير المسجلة")
         cursor.execute(
