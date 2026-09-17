@@ -2,7 +2,7 @@ import sqlite3
 import urllib.parse
 import streamlit as st
 
-# 1. تهيئة قاعدة البيانات باسم جديد لتفادي التعارض مع الهيكل القديم
+# 1. تهيئة قاعدة البيانات
 conn = sqlite3.connect("electricity_v2.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -198,21 +198,23 @@ else:
                     actual_consumption = raw_consumption * ct_ratio
                     cat = selected_sub[2]
 
-                    if cat == "residential":
-                        if actual_consumption <= 6000:
-                            base_cost = actual_consumption * 0.18
-                        else:
-                            base_cost = (6000 * 0.18) + (
-                                (actual_consumption - 6000) * 0.30
-                            )
-                    else:  # commercial / ct
-                        if actual_consumption <= 6000:
-                            base_cost = actual_consumption * 0.20
-                        else:
-                            base_cost = (6000 * 0.20) + (
-                                (actual_consumption - 6000) * 0.30
-                            )
+                    # تحديد سعر الشريحة الأولى حسب الفئة
+                    tier1_rate = 0.18 if cat == "residential" else 0.20
+                    tier2_rate = 0.30
 
+                    # تفصيل الشريحة الأولى والثانية
+                    if actual_consumption <= 6000:
+                        tier1_kwh = actual_consumption
+                        tier1_cost = tier1_kwh * tier1_rate
+                        tier2_kwh = 0.0
+                        tier2_cost = 0.0
+                    else:
+                        tier1_kwh = 6000.0
+                        tier1_cost = tier1_kwh * tier1_rate
+                        tier2_kwh = actual_consumption - 6000.0
+                        tier2_cost = tier2_kwh * tier2_rate
+
+                    base_cost = tier1_cost + tier2_cost
                     meter_fee = 15.0
                     subtotal = base_cost + meter_fee
                     vat = subtotal * 0.15
@@ -236,22 +238,50 @@ else:
                     )
                     conn.commit()
 
+                    # عرض ملخص النتائج في التطبيق
                     st.success(f"إجمالي المبلغ: {total:.2f} ريال سعودي")
-                    st.write(f"- الاستهلاك: {actual_consumption:.2f} ك.و.س")
-                    st.write(f"- ضريبة القيمة المضافة: {vat:.2f} ريال")
+                    st.markdown("### 📊 تفاصيل الحساب:")
+                    st.write(
+                        f"- **إجمالي الاستهلاك:** {actual_consumption:.2f} ك.و.س"
+                    )
+                    st.write(
+                        f"- **الشريحة الأولى (1 إلى 6000 ك.و.س بسعر {tier1_rate}):** {tier1_kwh:.2f} ك.و.س = {tier1_cost:.2f} ريال"
+                    )
+
+                    if tier2_kwh > 0:
+                        st.write(
+                            f"- **الشريحة الثانية (أكثر من 6000 ك.و.س بسعر {tier2_rate}):** {tier2_kwh:.2f} ك.و.س = {tier2_cost:.2f} ريال"
+                        )
+                    else:
+                        st.write(
+                            "- **الشريحة الثانية (0.30 ريال):** 0.00 ك.و.س (لم يتم تجاوز 6000 ك.و.س)"
+                        )
+
+                    st.write(f"- **رسوم العداد:** {meter_fee:.2f} ريال")
+                    st.write(
+                        f"- **ضريبة القيمة المضافة (15%):** {vat:.2f} ريال"
+                    )
+
+                    # تجهيز نص الواتساب ليشمل تفاصيل الشرايح
+                    tier_details = f"• الشريحة الأولى ({tier1_rate} ريال): {tier1_kwh:.2f} ك.و.س = {tier1_cost:.2f} ريال\n"
+                    if tier2_kwh > 0:
+                        tier_details += f"• الشريحة الثانية ({tier2_rate} ريال): {tier2_kwh:.2f} ك.و.س = {tier2_cost:.2f} ريال\n"
 
                     msg = (
-                        f"فاتورة كهرباء للمشترك: {selected_sub[1]}\n"
-                        f"الاستهلاك: {actual_consumption:.2f} ك.و.س\n"
-                        f"رسوم العداد: {meter_fee:.2f} ريال\n"
-                        f"الضريبة (15%): {vat:.2f} ريال\n"
-                        f"الإجمالي المستحق: {total:.2f} ريال سعودي"
+                        f"🧾 *فاتورة كهرباء للمشترك:* {selected_sub[1]}\n"
+                        f"------------------------------\n"
+                        f"• إجمالي الاستهلاك: {actual_consumption:.2f} ك.و.س\n"
+                        f"{tier_details}"
+                        f"• رسوم العداد: {meter_fee:.2f} ريال\n"
+                        f"• الضريبة (15%): {vat:.2f} ريال\n"
+                        f"------------------------------\n"
+                        f"💰 *الإجمالي المستحق:* {total:.2f} ريال سعودي"
                     )
                     encoded_msg = urllib.parse.quote(msg)
                     whatsapp_url = f"https://wa.me/{selected_sub[4]}?text={encoded_msg}"
 
                     st.markdown(
-                        f"[📱 إرسال الفاتورة عبر WhatsApp]({whatsapp_url})"
+                        f"[📱 إرسال الفاتورة التفصيلية عبر WhatsApp]({whatsapp_url})"
                     )
 
     # تبويب سجل الفواتير
